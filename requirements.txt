@@ -6,6 +6,7 @@ openai>=1.30
 
 # Vector store
 chromadb>=0.5
+fastembed>=0.3
 
 # Data
 datasets>=2.19

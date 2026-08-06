@@ -88,22 +88,44 @@ def chunk_text(text: str, size: int | None = None, overlap: int | None = None) -
 # ---------- 4. 向量化 ----------
 
 class Embedder:
-    """把文本变成向量。mock 模式生成稳定的伪向量，方便没有 API Key 时测试。"""
+    """把文本变成向量，支持三种来源：
+    - local：本地模型（fastembed + bge-small-zh，中文效果好，无需额外 API Key）
+    - api：OpenAI 兼容的 embedding 接口（可单独配置 EMBEDDING_BASE_URL / KEY）
+    - mock：伪向量，用于没有网络和 Key 时测试流程
+    """
 
     def __init__(self):
-        self.mock = config.RAG_MODE == "mock"
-        if not self.mock:
-            if not config.LLM_API_KEY or config.LLM_API_KEY.startswith("sk-你的"):
+        self.provider = (
+            config.EMBEDDING_PROVIDER
+            or ("mock" if config.RAG_MODE == "mock" else "local")
+        )
+        if self.provider == "api":
+            if not config.EMBEDDING_API_KEY or config.EMBEDDING_API_KEY.startswith("sk-你的"):
                 raise SystemExit(
-                    "缺少 LLM_API_KEY：请在 .env 中配置，或先使用 RAG_MODE=mock 模式"
+                    "EMBEDDING_PROVIDER=api 但缺少 EMBEDDING_API_KEY，请在 .env 中配置"
                 )
-            self.client = OpenAI(api_key=config.LLM_API_KEY, base_url=config.LLM_BASE_URL)
+            self.client = OpenAI(
+                api_key=config.EMBEDDING_API_KEY,
+                base_url=config.EMBEDDING_BASE_URL,
+            )
+        elif self.provider == "local":
+            self._init_local()
+
+    def _init_local(self) -> None:
+        try:
+            from fastembed import TextEmbedding
+        except ImportError:
+            raise SystemExit("未安装 fastembed：请在虚拟环境执行 pip install fastembed")
+        self._model = TextEmbedding(model_name=config.EMBEDDING_MODEL)
 
     def embed(self, texts: list[str]) -> list[list[float]]:
-        if self.mock:
+        if self.provider == "mock":
             return [_mock_vector(t) for t in texts]
-        resp = self.client.embeddings.create(model=config.EMBEDDING_MODEL, input=texts)
-        return [d.embedding for d in resp.data]
+        if self.provider == "api":
+            resp = self.client.embeddings.create(model=config.EMBEDDING_MODEL, input=texts)
+            return [d.embedding for d in resp.data]
+        # local：fastembed 返回 numpy 数组，转成 list
+        return [v.tolist() for v in self._model.embed(texts)]
 
 
 def _mock_vector(text: str, dim: int | None = None) -> list[float]:

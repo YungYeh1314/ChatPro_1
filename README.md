@@ -74,11 +74,14 @@ RAG_MODE=real
 LLM_API_KEY=sk-xxxxx
 LLM_BASE_URL=https://api.deepseek.com/v1   # 以 DeepSeek 为例
 LLM_MODEL=deepseek-chat
-EMBEDDING_MODEL=text-embedding-3-small     # embedding 模型按供应商选择
-EMBEDDING_DIM=1536                          # 与 embedding 模型维度一致
+
+# Embedding：local=本地模型（默认，无需额外 Key）；api=用 OpenAI 兼容接口
+EMBEDDING_PROVIDER=local
+EMBEDDING_MODEL=BAAI/bge-small-zh-v1.5
+EMBEDDING_DIM=512
 ```
 
-> embedding 模型维度必须与 `EMBEDDING_DIM` 一致，且换模型后需要重新导入数据。
+> 本地 embedding 首次使用会自动下载模型（约 100MB）；换 embedding 模型后需要清空 `data/chroma/` 并重新导入数据。
 
 ## 项目结构
 
@@ -116,3 +119,11 @@ SQLite 里 4 张表（`data/rag.db`）：
 **检索不到相关内容？** 检查是否已导入数据（`python -m app.ingest ingest --file examples/sample_wikipedia.jsonl`），并确认提问内容和语料主题一致。
 
 **换 embedding 模型/维度？** 改 `.env` 后需要清空 `data/chroma/` 并重新导入数据。
+
+**本地模型下载失败（证书/网络错误）？** 国内网络下首次下载 embedding 模型时，可以先设置镜像再导入：
+
+```powershell
+$env:HF_ENDPOINT = "https://hf-mirror.com"
+$env:HF_HUB_DISABLE_XET = "1"
+python -m app.ingest ingest --file examples/sample_wikipedia.jsonl --force
+```
