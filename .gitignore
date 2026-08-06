@@ -31,3 +31,9 @@ Thumbs.db
 # 日志与临时文件
 *.log
 tmp/
+
+# 运行时数据（SQLite、向量库、下载的语料）
+data/
+
+# 密钥文件（API Key 等）
+.env

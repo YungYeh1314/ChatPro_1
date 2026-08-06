@@ -1,3 +1,15 @@
-# 在此添加项目依赖，例如：
-# openai
-# fastapi
+# Backend
+fastapi>=0.110
+uvicorn[standard]>=0.29
+python-dotenv>=1.0
+openai>=1.30
+
+# Vector store
+chromadb>=0.5
+
+# Data
+datasets>=2.19
+requests>=2.31
+
+# Frontend
+streamlit>=1.36
