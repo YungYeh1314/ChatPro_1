@@ -14,3 +14,5 @@ requests>=2.31
 
 # Frontend
 streamlit>=1.36
+
+pydantic~=2.13.4

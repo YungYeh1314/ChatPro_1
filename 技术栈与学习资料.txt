@@ -1,0 +1,136 @@
+ChatPro_1 项目技术栈清单与学习资料
+====================================
+
+这个项目是"RAG（检索增强生成）问答系统"，代码量不大，但涉及的技术面比较广。
+下面按"先学什么、再学什么"的顺序整理，每项都给出：在项目里的作用、官方学习入口、
+以及可以去搜索引擎搜的关键词。建议按 0 → 7 的顺序学。
+
+--------------------------------------------------------------------------
+0. Python 基础（一切的前提）
+--------------------------------------------------------------------------
+项目里的用法：
+  - 列表、字典、函数、类型注解（如 list[dict]、int | None）
+  - 生成器（yield，见 ingest.py 的 load_jsonl、rag.py 的 stream_answer）
+  - 上下文管理器（with 语句，见 database.py、frontend.py）
+  - 装饰器（@app.get(...)，见 chat_api.py）
+  - __name__ == "__main__" 入口写法
+  - 路径处理 pathlib（config.py 里的 Path）
+  - 命令行参数 argparse（ingest.py 的 main）
+
+学习入口：
+  - 官方中文教程：https://docs.python.org/zh-cn/3/tutorial/
+  - 在线练习：https://www.learnpython.org/zh/
+  - 关键词：Python 列表推导式、Python 生成器 yield、Python with 上下文管理器、
+    Python 装饰器、Python 类型注解
+
+--------------------------------------------------------------------------
+1. 配置管理：python-dotenv + 环境变量
+--------------------------------------------------------------------------
+项目里的用法：config.py 用 load_dotenv() 读取 .env 文件，
+用 os.getenv("名字", "默认值") 取值，把 API Key、模型名、切块大小等集中管理。
+
+学习入口：
+  - python-dotenv 文档：https://saurabh-kumar.com/python-dotenv/
+  - 关键词：python-dotenv、.env 文件、环境变量 os.getenv
+
+--------------------------------------------------------------------------
+2. 数据存储：SQLite（Python 自带）
+--------------------------------------------------------------------------
+项目里的用法：database.py 里 4 张表（documents / chunks / conversations / messages），
+参数化查询（? 占位符）、外键、事务（with conn）、索引。
+
+学习入口：
+  - Python 官方 sqlite3 文档：https://docs.python.org/zh-cn/3/library/sqlite3.html
+  - 关键词：SQLite 入门、SQL CREATE TABLE、主键外键、参数化查询防注入
+
+--------------------------------------------------------------------------
+3. 后端 Web 框架：FastAPI + Uvicorn + Pydantic
+--------------------------------------------------------------------------
+项目里的用法：chat_api.py 定义 /health、/chat、/chat/stream 三个接口，
+Uvicorn 负责启动服务器，Pydantic 负责请求体校验（ChatRequest 类）。
+
+学习入口：
+  - FastAPI 官方文档（有中文）：https://fastapi.tiangolo.com/zh/
+  - Uvicorn：https://www.uvicorn.org/
+  - Pydantic：https://docs.pydantic.dev/
+  - 关键词：FastAPI 教程、FastAPI 路径操作装饰器、Pydantic BaseModel、
+    StreamingResponse、CORS 跨域
+
+--------------------------------------------------------------------------
+4. 向量数据库：Chroma + 向量检索
+--------------------------------------------------------------------------
+项目里的用法：ingest.py 把切片向量化后存进 Chroma（data/chroma/），
+rag.py 的 retrieve() 用问题向量查最相似的 top_k 个切片。
+
+学习入口：
+  - Chroma 官方文档：https://docs.trychroma.com/
+  - 关键词：Chroma 向量数据库、余弦相似度、向量检索 RAG、
+    HNSW 索引（hnsw:space=cosine）
+
+--------------------------------------------------------------------------
+5. 文本向量化（Embedding）：fastembed + BAAI/bge-small-zh-v1.5
+--------------------------------------------------------------------------
+项目里的用法：Embedder 类（ingest.py），支持本地模型 / API / mock 三种方式；
+当前 .env 用的是本地模型 bge-small-zh-v1.5，输出 512 维向量。
+
+学习入口：
+  - fastembed：https://github.com/qdrant/fastembed
+  - 模型主页：https://huggingface.co/BAAI/bge-small-zh-v1.5
+  - 关键词：文本向量化 embedding、bge 中文模型、fastembed 教程、
+    Hugging Face 模型下载
+
+--------------------------------------------------------------------------
+6. 大模型 API：OpenAI 兼容接口 + 流式输出（SSE）
+--------------------------------------------------------------------------
+项目里的用法：rag.py 用 OpenAI 客户端调 DeepSeek 等兼容接口，
+stream=True 逐字返回，chat_api.py 用 SSE 推给前端，frontend.py 逐字渲染。
+
+学习入口：
+  - OpenAI Python SDK：https://github.com/openai/openai-python
+  - DeepSeek 开放平台：https://platform.deepseek.com/
+  - SSE 协议：https://developer.mozilla.org/zh-CN/docs/Web/API/Server-sent_events
+  - 关键词：OpenAI SDK chat.completions、messages 角色 system/user/assistant、
+    stream=True 流式、SSE text/event-stream
+
+--------------------------------------------------------------------------
+7. 前端界面：Streamlit + requests
+--------------------------------------------------------------------------
+项目里的用法：frontend.py 是 Streamlit 应用，
+用 requests.post(stream=True) 请求后端并逐行解析 SSE 事件；
+st.session_state 保存聊天记录和会话 id。
+
+学习入口：
+  - Streamlit 官方文档：https://docs.streamlit.io/
+  - requests 文档（有中文）：https://requests.readthedocs.io/zh-cn/latest/
+  - 关键词：Streamlit 入门、st.chat_message、st.session_state、
+    st.chat_input、requests 流式响应 iter_lines
+
+--------------------------------------------------------------------------
+8. 数据获取：Hugging Face datasets（可选）
+--------------------------------------------------------------------------
+项目里的用法：ingest.py 的 download 子命令，用 load_dataset(streaming=True)
+流式下载中文维基子集，按关键词过滤后存成 JSONL。
+
+学习入口：
+  - datasets 官方文档：https://huggingface.co/docs/datasets
+  - 关键词：Hugging Face datasets、streaming=True、JSONL 格式
+
+--------------------------------------------------------------------------
+9. RAG 整体概念（把这些技术串起来的那根线）
+--------------------------------------------------------------------------
+一句话理解：先"建库"（资料→切块→向量化→存向量库），
+再"问答"（问题→向量化→检索 top-k→连同问题喂给大模型→回答）。
+
+学习入口：
+  - RAG 综述（中文）：https://www.promptingguide.ai/zh/research/rag
+  - 关键词：RAG 检索增强生成、RAG 完整流程、向量检索原理、top-k 检索
+
+--------------------------------------------------------------------------
+学习顺序建议
+--------------------------------------------------------------------------
+1) 先过一遍 Python 基础（第 0 项），能看懂函数、字典、列表即可，不用深究。
+2) 按项目数据流学习：config.py（配置）→ database.py（存数据）→
+   ingest.py（建库）→ rag.py（检索+生成）→ chat_api.py（接口）→
+   frontend.py（界面），每读一个文件就对应看第 1~7 项里相关的资料。
+3) 动手验证：把 .env 的 RAG_MODE 改成 mock，先不花一分钱把全流程跑通；
+   理解了再开 real 模式。
