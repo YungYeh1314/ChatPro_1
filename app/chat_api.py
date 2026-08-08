@@ -18,14 +18,7 @@ from . import config, database, rag
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
-    """应用生命周期管理：控制服务启动和关闭时执行什么。
-
-    yield 之前 = 启动时执行；yield 之后 = 关闭时执行。
-    这里启动时初始化数据库（建表）；关闭时暂无全局资源要清理，所以留空。
-    这个函数必须是"异步上下文管理器"（async + asynccontextmanager），
-    这是 FastAPI 的固定要求，yield 这一行必不可少。
-    """
+async def lifespan(app: FastAPI):        #创建生命周期，表示启动前后，即yield前后做些什么
     # 启动时确保 SQLite 数据库和 4 张表存在（CREATE TABLE IF NOT EXISTS，幂等）
     database.init_db()
     yield
@@ -46,7 +39,7 @@ app.add_middleware(
 )
 
 
-class ChatRequest(BaseModel):
+class ChatRequest(BaseModel): #定义数据类型
     """请求体模型：pydantic 根据类型自动做数据校验和转换。
 
     前端 POST 的 JSON 会按这里的字段解析：
@@ -59,7 +52,7 @@ class ChatRequest(BaseModel):
 
 
 @app.get("/health")
-def health() -> dict:
+def health() -> dict:  #确保服务正常
     """健康检查接口：启动后访问 /health 能确认服务活着，并看到当前状态。"""
     # **database.stats() 把字典展开成关键字参数，等价于写
     # {"status": "ok", "mode": config.RAG_MODE, "documents": ..., ...}
@@ -67,21 +60,21 @@ def health() -> dict:
 
 
 @app.post("/chat")
-def chat(req: ChatRequest) -> dict:
+def chat(req: ChatRequest) -> dict:   #普通形式的对话如此
     """非流式问答接口：一次请求返回完整答案 + 来源 + 会话 id。"""
     if not req.question.strip():  # 去掉首尾空白后为空 = 空问题
         raise HTTPException(status_code=400, detail="问题不能为空")
 
     # 没有会话 id 就新建一个会话（通常是第一次提问时）
     conv_id = req.conversation_id or database.create_conversation()
-    database.add_message(conv_id, "user", req.question)       # 记录用户问题
-    answer_text, sources = rag.answer(req.question, conv_id)  # 调用 RAG 核心
-    database.add_message(conv_id, "assistant", answer_text)   # 记录助手回答
+    database.add_message(conv_id, "user", req.question)       # 将用户的问题写入数据库
+    answer_text, sources = rag.answer(req.question, conv_id)  # 调用rag的方法
+    database.add_message(conv_id, "assistant", answer_text)   # 将ai的回答写入数据库
     return {"answer": answer_text, "sources": sources, "conversation_id": conv_id}
 
 
 @app.post("/chat/stream")
-def chat_stream(req: ChatRequest) -> StreamingResponse:
+def chat_stream(req: ChatRequest) -> StreamingResponse:   # 流式输出的如此
     """流式问答接口：用 SSE 逐字推送回答，前端可以实时显示。
 
     返回类型 StreamingResponse：响应不是一次性 JSON，
@@ -92,7 +85,7 @@ def chat_stream(req: ChatRequest) -> StreamingResponse:
     conv_id = req.conversation_id or database.create_conversation()
     database.add_message(conv_id, "user", req.question)
     gen, sources = rag.stream_answer(req.question, conv_id)
-
+# 到此为止和普通模式一样，以下是要将rag的回答包装成流式输出的模式
     def event_gen():
         """把生成器包装成 SSE 事件序列（本身也是一个生成器）。
 
@@ -112,7 +105,7 @@ def chat_stream(req: ChatRequest) -> StreamingResponse:
             answer_text = "".join(full)
             database.add_message(conv_id, "assistant", answer_text)  # 完整回答才存档
             yield _sse({"type": "done", "conversation_id": conv_id})
-        except Exception as exc:  # LLM 调用失败时把错误发给前端，而不是断开连接
+        except Exception as exc:  # llm调用失败时把错误发给前端，而不是断开连接
             yield _sse({"type": "error", "detail": str(exc)})
 
     # media_type="text/event-stream" 告诉客户端这是 SSE 流
