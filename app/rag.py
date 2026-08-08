@@ -11,7 +11,9 @@ RAG（Retrieval-Augmented Generation，检索增强生成）的核心思想：
 """
 
 import chromadb
-from openai import OpenAI
+# ChatOpenAI 是 LangChain 对 OpenAI 兼容接口的封装：底层仍走 openai SDK，
+# 但统一了普通/流式两种调用方式，方便以后换模型供应商时少改代码。
+from langchain_openai import ChatOpenAI
 from . import config, database
 from .ingest import Embedder
 
@@ -110,14 +112,18 @@ def answer(question: str, conversation_id: int | None = None) -> tuple[str, list
     # 校验 Key：为空或者还是 .env.example 的占位符都直接报错，给出可操作的提示
     if not config.LLM_API_KEY or config.LLM_API_KEY.startswith("sk-你的"):
         raise RuntimeError("缺少 LLM_API_KEY：请在 .env 中配置，或使用 RAG_MODE=mock")
-    client = OpenAI(api_key=config.LLM_API_KEY, base_url=config.LLM_BASE_URL)
+    # ChatOpenAI 封装了 OpenAI 兼容接口：base_url 可换成 DeepSeek、GLM 等任意供应商
+    llm = ChatOpenAI(
+        model=config.LLM_MODEL, api_key=config.LLM_API_KEY, base_url=config.LLM_BASE_URL
+    )
     messages = [
         {"role": "system", "content": "你是一个基于资料回答问题的助手。"},  # 系统角色：设定模型身份
         *_history_messages(conversation_id),  # 中间插入历史对话（* 是列表展开语法）
         {"role": "user", "content": build_prompt(question, contexts)},     # 最后是本次问题+资料
     ]
-    resp = client.chat.completions.create(model=config.LLM_MODEL, messages=messages)
-    return resp.choices[0].message.content, contexts
+    # invoke() 可以直接吃这种 "role/content" 字典列表（LangChain 会自动转成内部消息对象）
+    resp = llm.invoke(messages)
+    return resp.content, contexts
 
 
 def stream_answer(question: str, conversation_id: int | None = None):
@@ -141,23 +147,23 @@ def stream_answer(question: str, conversation_id: int | None = None):
 
     if not config.LLM_API_KEY or config.LLM_API_KEY.startswith("sk-你的"):
         raise RuntimeError("缺少 LLM_API_KEY：请在 .env 中配置，或使用 RAG_MODE=mock")
-    client = OpenAI(api_key=config.LLM_API_KEY, base_url=config.LLM_BASE_URL)
+    llm = ChatOpenAI(
+        model=config.LLM_MODEL, api_key=config.LLM_API_KEY, base_url=config.LLM_BASE_URL
+    )
     messages = [
         {"role": "system", "content": "你是一个基于资料回答问题的助手。"},
         *_history_messages(conversation_id),
         {"role": "user", "content": build_prompt(question, contexts)},
     ]
-    # stream=True 是关键：接口返回的不是完整回答，而是一个"流"，
-    # 需要不断迭代 resp 才能拿到陆续到达的碎片。
-    resp = client.chat.completions.create(
-        model=config.LLM_MODEL, messages=messages, stream=True
-    )
+    # stream() 返回一个生成器：接口返回的不是完整回答，而是一个"流"，
+    # 需要不断迭代才能拿到陆续到达的碎片（类似原来的 stream=True）。
+    resp = llm.stream(messages)
 
     def real_gen():
         for chunk in resp:
-            # 每个 chunk 是"增量"：只包含新增的那几个字（delta）
-            delta = chunk.choices[0].delta.content
-            if delta:
-                yield delta
+            # 每个 chunk 是"增量"，.content 是新增的那几个字（类似原来的 delta）
+            content = chunk.content
+            if content:
+                yield content
 
     return real_gen(), contexts

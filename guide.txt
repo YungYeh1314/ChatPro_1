@@ -1,0 +1,76 @@
+项目是一个从零实现的 RAG（检索增强生成）问答系统，构建逻辑清晰，按"分层 + 数据流"拆解如下。
+
+## 整体架构
+
+```
+语料(JSONL) ─> 清洗 ─> 切块 ─> 向量化(embedding)
+                                │
+                                ▼
+                       Chroma 向量库 + SQLite
+                                ▲
+用户提问 ─> 向量化 ─> 相似度检索(top-k)
+                                │
+                 检索片段拼进提示词
+                                ▼
+                      LLM 生成回答 ─> FastAPI ─> Streamlit
+```
+
+系统分两个阶段：
+
+1. **离线建库**（只跑一次）：导入数据 → 切块 → 向量化 → 存库
+2. **在线问答**（每次提问）：检索 → 拼提示词 → LLM 生成 → 流式返回
+
+## 模块分工（app/ 包）
+
+| 文件 | 职责 |
+|---|---|
+| `app/config.py` | 全局配置：从 `.env` 读 API Key、模型名、切块大小、`TOP_K` 等，集中管理 |
+| `app/database.py` | SQLite 数据层：4 张表（documents / chunks / conversations / messages），封装所有 SQL |
+| `app/ingest.py` | **离线建库**：下载/读取 JSONL → 清洗 → 切块 → 向量化 → 写 Chroma + SQLite |
+| `app/rag.py` | **在线问答核心**：检索 → 拼提示词 → 调 LLM（普通 + 流式两种，经 LangChain 的 `ChatOpenAI`） |
+| `app/chat_api.py` | FastAPI 后端大门：`/health`、`/chat`、`/chat/stream`（SSE 流式） |
+| `frontend.py` | Streamlit 前端：逐字渲染流式回答 + 展示参考来源 |
+
+入口 `main.py` 只是"说明书"，打印运行整个项目需要的 3 条命令。
+
+## 核心数据流
+
+**建库（`ingest_documents`）**，`app/ingest.py:199`：
+1. 逐行读 JSONL（`title` + `content`）
+2. `clean_text` 去 HTML 标签、合并空白
+3. 原文存入 SQLite `documents` 表，拿到自增 `doc_id`
+4. `chunk_text` 按 500 字符切块、100 字符重叠
+5. `Embedder.embed` 向量化（默认本地 bge-small-zh 模型，512 维）
+6. 切片写入 Chroma（向量 + 原文 + `doc_id` 元数据），同时切片也存进 SQLite `chunks` 表
+
+**问答（`rag.py`）**：
+1. `retrieve`：问题向量化 → 去 Chroma 按余弦相似度查 top-4 → 返回带来源的切片
+2. `build_prompt`：把切片拼进固定提示词模板，要求 LLM"只根据资料回答"
+3. 拼 messages（系统提示 + 最近 10 条历史对话 + 本次问题）
+4. `stream_answer` 用 LangChain `ChatOpenAI.stream()` 逐字生成，`chat_api.py` 包装成 SSE 事件流（sources → token → done）
+
+**前端（`frontend.py`）**：请求 `/chat/stream`，按 `data: ` 前缀解析 SSE，`placeholder` 占位逐字刷新制造打字机效果，最后折叠展示来源。
+
+## 两个巧妙的"降门槛"机制
+
+- **`RAG_MODE=mock`**（默认）：没 API Key 也能跑通全流程——用 MD5 哈希生成**伪向量**（`_mock_vector`，`app/ingest.py:185`），回答用规则文本拼出，只为验证链路通不通。
+- **`EMBEDDING_PROVIDER`** 三选一：`local`（本地模型，中文好、免 Key）/ `api`（OpenAI 兼容接口）/ `mock`（伪向量）。默认 `RAG_MODE=mock` 时自动用伪向量，`real` 时用本地模型。
+
+## 一条关键设计
+
+**SQLite 和 Chroma 通过 `doc_id` 关联**：Chroma 里每条向量的元数据带着 `doc_id` 和 `title`，检索命中后能反查到 SQLite 里的原文；而对话历史（多轮上下文）只存在 SQLite 的 `messages` 表，不走向量库。
+
+## 工作流
+
+```bash
+python -m app.ingest ingest --file examples/sample_wikipedia.jsonl   # 1. 建库（一次性离线操作）
+uvicorn app.chat_api:app --reload                                     # 2. 后端
+streamlit run frontend.py                                             # 3. 前端
+```
+
+> **只需启动第 2、3 步这两个进程，不需要再启动任何别的服务**：
+> - SQLite、Chroma、本地 embedding 模型都是**进程内**的（文件/内存），
+>   没有独立的数据库、向量库或模型服务要额外开启；
+> - 第 1 步"建库"是一次性离线操作，导入完成后问答阶段就不再需要它；
+> - `RAG_MODE=mock`（默认）不需要 API Key 就能跑通全流程；
+>   `real` 模式只需在 `.env` 填好密钥。

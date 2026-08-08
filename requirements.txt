@@ -4,6 +4,9 @@ uvicorn[standard]>=0.29
 python-dotenv>=1.0
 openai>=1.30
 
+# LLM 调用抽象（LangChain，兼容 OpenAI/DeepSeek/GLM 等）
+langchain-openai>=1.4
+
 # Vector store
 chromadb>=0.5
 fastembed>=0.3

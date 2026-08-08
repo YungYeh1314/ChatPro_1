@@ -80,17 +80,20 @@ rag.py 的 retrieve() 用问题向量查最相似的 top_k 个切片。
     Hugging Face 模型下载
 
 --------------------------------------------------------------------------
-6. 大模型 API：OpenAI 兼容接口 + 流式输出（SSE）
+6. 大模型 API：LangChain ChatOpenAI + OpenAI 兼容接口 + 流式输出（SSE）
 --------------------------------------------------------------------------
-项目里的用法：rag.py 用 OpenAI 客户端调 DeepSeek 等兼容接口，
-stream=True 逐字返回，chat_api.py 用 SSE 推给前端，frontend.py 逐字渲染。
+项目里的用法：rag.py 用 LangChain 的 ChatOpenAI（langchain-openai）调 DeepSeek 等
+兼容接口。ChatOpenAI 底层仍走 openai SDK（所以 base_url、messages 格式不变），
+只是把"普通调用（invoke）"和"流式调用（stream）"统一成同一个类；
+chat_api.py 用 SSE 把流式内容推给前端，frontend.py 逐字渲染。
 
 学习入口：
+  - LangChain ChatOpenAI：https://python.langchain.com/docs/integrations/chat/openai/
   - OpenAI Python SDK：https://github.com/openai/openai-python
   - DeepSeek 开放平台：https://platform.deepseek.com/
   - SSE 协议：https://developer.mozilla.org/zh-CN/docs/Web/API/Server-sent_events
-  - 关键词：OpenAI SDK chat.completions、messages 角色 system/user/assistant、
-    stream=True 流式、SSE text/event-stream
+  - 关键词：langchain ChatOpenAI、OpenAI 兼容 base_url、messages 角色 system/user/assistant、
+    invoke 与 stream、SSE text/event-stream
 
 --------------------------------------------------------------------------
 7. 前端界面：Streamlit + requests
